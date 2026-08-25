@@ -1,4 +1,7 @@
-"""RTSP endpoint helpers contributed by the receiver branch."""
+"""RTSP URI 생성과 RTSP/2.0 endpoint 연결 확인을 제공한다.
+
+Provide RTSP URI construction and RTSP/2.0 endpoint probing.
+"""
 
 from __future__ import annotations
 
@@ -16,14 +19,19 @@ from ._protocol import (
 )
 
 
-# CODEX-GENERATED (Codex를 통해 생성된 코드): FR-RTSP-005/006 구현에
-# 사용하는 엄격한 RTSP/2.0 status-line 규칙과 무한 header 수신 방지 상한이다.
+# FR-RTSP-005/006: status line은 ``RTSP/2.0 3자리코드 설명`` 형식만 허용한다.
+# Only ``RTSP/2.0 <three-digit-code> <reason>`` is accepted as a status line.
+# 응답 상한은 header 종결자가 없는 상대가 메모리를 계속 쓰게 하는 일을 막는다.
+# The header cap prevents unbounded reads from a peer that never terminates it.
 _STATUS_LINE = re.compile(rb"^RTSP/2\.0 ([0-9]{3}) [\x20-\x7e]+$")
 _MAX_RESPONSE_HEADER = 16_384
 
 
 def build_rtsp_uri(ip: str, rtsp_port: int, rtsp_path: str) -> str:
-    """Build the RTSP URI represented by a validated DETAIL endpoint."""
+    """검증된 DETAIL endpoint를 percent-encoded RTSP URI로 조합한다.
+
+    Build a percent-encoded RTSP URI from a validated DETAIL endpoint.
+    """
 
     host = validate_ipv4(ip)
     port = validate_port(rtsp_port)
@@ -37,11 +45,17 @@ def probe_rtsp(
     rtsp_path: str,
     timeout: float = DEFAULT_TIMEOUT,
 ) -> bool:
-    """Return whether an RTSP/2.0 OPTIONS request receives a 2xx response."""
+    """RTSP/2.0 OPTIONS 요청이 2xx 응답을 받는지 확인한다.
 
-    # CODEX-GENERATED (Codex를 통해 생성된 코드): FR-RTSP-002~007 구현.
-    # TCP 연결, OPTIONS/CSeq 전송, 하나의 timeout 예산, 엄격한 응답 판정과
-    # 네트워크 오류 격리를 수행한다.
+    Return whether an RTSP/2.0 OPTIONS request receives a 2xx response.
+
+    입력, 연결, 송수신, 응답 형식 오류는 모두 ``False``로 정규화한다.
+    Input, connection, I/O, and response-format failures are normalized to
+    ``False``.
+    """
+
+    # FR-RTSP-002~007: TCP 연결부터 응답 수신까지 하나의 timeout 예산을
+    # 공유한다. One timeout budget covers connection, request, and response.
     timeout_value = validate_timeout(timeout)
     if timeout_value == 0:
         return False
@@ -61,7 +75,10 @@ def probe_rtsp(
 
 
 def _make_options_request(uri: str) -> bytes:
-    """Build the minimal RTSP/2.0 OPTIONS request used by the probe."""
+    """probe에 사용할 최소 RTSP/2.0 OPTIONS 요청을 만든다.
+
+    Build the minimal RTSP/2.0 OPTIONS request used by the probe.
+    """
 
     return (
         f"OPTIONS {uri} RTSP/2.0\r\n"
@@ -77,7 +94,11 @@ def _exchange_options(
     request: bytes,
     deadline: float,
 ) -> bytes | None:
-    """Connect, send OPTIONS, and return one complete RTSP response header."""
+    """TCP 연결 후 OPTIONS를 보내고 완전한 RTSP 응답 header를 반환한다.
+
+    Connect over TCP, send OPTIONS, and return one complete RTSP response
+    header within the shared deadline.
+    """
 
     remaining = deadline - time.monotonic()
     if remaining <= 0:
@@ -100,7 +121,10 @@ def _receive_response_header(
     connection: socket.socket,
     deadline: float,
 ) -> bytes | None:
-    """Read one bounded RTSP response header within the shared deadline."""
+    """공유 deadline과 크기 상한 안에서 RTSP 응답 header 하나를 읽는다.
+
+    Read one RTSP response header within the shared deadline and size cap.
+    """
 
     response = bytearray()
     while b"\r\n\r\n" not in response and len(response) < _MAX_RESPONSE_HEADER:
@@ -118,7 +142,10 @@ def _receive_response_header(
 
 
 def _is_success_response(response_header: bytes) -> bool:
-    """Return whether an RTSP header starts with an RTSP/2.0 2xx status line."""
+    """응답이 올바른 RTSP/2.0 2xx status line으로 시작하는지 확인한다.
+
+    Return whether the response starts with a valid RTSP/2.0 2xx status line.
+    """
 
     status_line = response_header.split(b"\r\n", 1)[0]
     match = _STATUS_LINE.fullmatch(status_line)

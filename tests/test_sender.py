@@ -26,9 +26,10 @@ class SenderTests(unittest.TestCase):
 
         def responder() -> None:
             try:
-                # ADVERTISE를 받는 discovery socket과 ACK를 보내는 socket의
-                # port를 다르게 만든다. Sender가 설정 port를 추측하지 않고
-                # recvfrom()의 실제 ACK peer를 쓰는지 검증하기 위해서다.
+                # ADVERTISE 수신 port와 ACK 송신 port를 다르게 하여 Sender가
+                # 설정값이 아닌 recvfrom()의 실제 peer를 쓰는지 확인한다.
+                # Different ports prove that Sender uses the actual ACK peer
+                # returned by recvfrom(), not the configured discovery port.
                 with (
                     socket.socket(
                         socket.AF_INET, socket.SOCK_DGRAM
@@ -138,8 +139,9 @@ class SenderTests(unittest.TestCase):
                         detail_peer,
                     )
 
-                    # DETAIL ACK처럼 보이는 패킷을 다른 port에서 먼저 보낸다.
-                    # Sender는 최초 ACK peer와 다르므로 이를 무시해야 한다.
+                    # 다른 port의 위조 DETAIL ACK는 최초 ACK peer와 다르므로
+                    # 무시해야 한다. A forged DETAIL ACK from another port must
+                    # be ignored because it is not the selected peer.
                     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as impostor:
                         impostor.sendto(
                             json.dumps(
@@ -170,8 +172,9 @@ class SenderTests(unittest.TestCase):
         thread = threading.Thread(target=responder, daemon=True)
         thread.start()
         self.assertTrue(ready.wait(1.0))
-        # The public API always broadcasts per SRS.  Patch only the private
-        # transport constant so this single-host socket test can use loopback.
+        # 공개 API의 broadcast 계약은 유지하고, 단일 host 테스트를 위해 private
+        # 주소만 loopback으로 바꾼다. Keep the public broadcast contract intact;
+        # patch only the private address for this single-host socket test.
         with mock.patch("ynb.sender._BROADCAST_ADDRESS", "127.0.0.1"):
             succeeded = sender.advertise(
                 DEVICE_ID,
@@ -217,7 +220,10 @@ class SenderTests(unittest.TestCase):
         self.assertEqual(received[0][1], received[1][1])
 
     def test_detail_ack_from_other_peer_is_ignored(self) -> None:
-        """다른 UDP port의 DETAIL ACK만 오면 교환은 성공하지 않아야 한다."""
+        """다른 port의 ACK만으로 성공하지 않는지 검사한다.
+
+        Verify that an ACK from a different UDP port cannot complete exchange.
+        """
 
         port = free_udp_port()
         ready = threading.Event()
@@ -255,7 +261,8 @@ class SenderTests(unittest.TestCase):
                     detail_payload, sender_peer = ack_socket.recvfrom(65_535)
                     detail_id = json.loads(detail_payload)["message_id"]
 
-                    # 내용은 맞지만 최초 ACK peer와 port가 다른 위조 ACK다.
+                    # 내용이 맞아도 최초 peer와 port가 다르면 위조 ACK다.
+                    # Matching fields do not make an ACK valid from another port.
                     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as impostor:
                         impostor.sendto(
                             json.dumps(
@@ -291,7 +298,10 @@ class SenderTests(unittest.TestCase):
         self.assertFalse(succeeded)
 
     def test_default_destination_is_udp_broadcast(self) -> None:
-        """기본 ADVERTISE가 limited broadcast 주소로 향하는지 검사한다."""
+        """기본 ADVERTISE의 limited broadcast 사용을 검사한다.
+
+        Verify that ADVERTISE uses the limited-broadcast address by default.
+        """
 
         udp_socket = mock.MagicMock()
         socket_context = mock.MagicMock()
@@ -328,7 +338,10 @@ class SenderTests(unittest.TestCase):
         )
 
     def test_advertisement_retries_ten_times_in_three_second_windows(self) -> None:
-        """No ACK causes ten broadcasts sharing one ID over the 30s budget."""
+        """ACK가 없을 때 같은 ID로 30초 동안 10회 광고하는지 검사한다.
+
+        Verify ten broadcasts with one ID over the 30-second budget without ACK.
+        """
 
         udp_socket = mock.MagicMock()
         socket_context = mock.MagicMock()
@@ -364,7 +377,10 @@ class SenderTests(unittest.TestCase):
         )
 
     def test_platform_timeout_overflow_returns_false(self) -> None:
-        """UDP socket이 큰 timeout을 거부해도 False로 끝나야 한다."""
+        """표현 불가능한 socket timeout이 ``False``로 격리되는지 검사한다.
+
+        Verify that an unsupported socket timeout is contained as ``False``.
+        """
 
         udp_socket = mock.MagicMock()
         udp_socket.settimeout.side_effect = OverflowError("timeout is too large")
@@ -384,7 +400,10 @@ class SenderTests(unittest.TestCase):
             )
 
     def test_public_api_cannot_replace_broadcast_with_unicast(self) -> None:
-        """CON-004: callers cannot redirect ADVERTISE to a unicast address."""
+        """CON-004: 호출자가 ADVERTISE를 unicast로 바꿀 수 없는지 검사한다.
+
+        CON-004: Verify callers cannot redirect ADVERTISE to unicast.
+        """
 
         with mock.patch("ynb.sender.socket.socket") as socket_factory:
             with self.assertRaises(TypeError):

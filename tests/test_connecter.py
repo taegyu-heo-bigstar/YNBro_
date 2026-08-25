@@ -47,7 +47,10 @@ class ConnecterTests(unittest.TestCase):
                     )
 
     def test_malformed_status_lines_are_false(self) -> None:
-        """reason phrase가 없거나 제어 문자가 있는 첫 줄은 거부한다."""
+        """reason phrase 누락과 제어 문자가 있는 status line을 거부한다.
+
+        Reject status lines with no reason phrase or with control characters.
+        """
 
         for status_line in (
             "RTSP/2.0 200",
@@ -61,7 +64,10 @@ class ConnecterTests(unittest.TestCase):
                     )
 
     def test_response_timeout_is_false(self) -> None:
-        """TCP 연결 뒤 RTSP 응답이 늦어도 예외 대신 False여야 한다."""
+        """늦은 RTSP 응답이 예외 대신 ``False``가 되는지 검사한다.
+
+        Verify that a late RTSP response returns ``False`` instead of raising.
+        """
 
         with FakeRtspServer(response_delay=0.2) as server:
             started = time.monotonic()
@@ -72,7 +78,10 @@ class ConnecterTests(unittest.TestCase):
         self.assertLess(elapsed, 0.2)
 
     def test_platform_timeout_overflow_is_false(self) -> None:
-        """OS가 표현할 수 없는 timeout도 외부 예외로 전파하지 않는다."""
+        """OS가 표현할 수 없는 timeout을 외부 예외로 전파하지 않는다.
+
+        Contain a timeout value that the operating system cannot represent.
+        """
 
         with mock.patch(
             "ynb.connecter.socket.create_connection",

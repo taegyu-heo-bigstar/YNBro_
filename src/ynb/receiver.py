@@ -1,4 +1,7 @@
-"""Receiver-side UDP exchange from the receiver feature branch."""
+"""Receiver 측 UDP 발견 교환과 RTSP 연결 확인을 수행한다.
+
+Perform receiver-side UDP discovery and RTSP endpoint probing.
+"""
 
 from __future__ import annotations
 
@@ -31,7 +34,15 @@ def discover(
     start_port: int = START_PORT,
     bind_host: str = "0.0.0.0",
 ) -> dict[str, object] | None:
-    """Discover one Sender, probe its RTSP endpoint, and return the SRS result."""
+    """Sender 한 대를 발견하고 RTSP endpoint 확인 결과를 반환한다.
+
+    Discover one Sender and return the result of probing its RTSP endpoint.
+
+    최초 유효 ADVERTISE를 보낸 peer가 선택되며, 전체 timeout 안에 교환이
+    끝나지 않거나 socket 오류가 발생하면 ``None``을 반환한다.
+    The first valid advertiser is selected; an incomplete exchange or socket
+    error returns ``None``.
+    """
 
     timeout_value = validate_timeout(timeout)
     listen_port = validate_port(start_port)
@@ -66,7 +77,12 @@ def _receive_message(
     udp_socket: socket.socket,
     deadline: float,
 ) -> tuple[dict[str, Any], tuple[str, int]] | None:
-    """Return the next decodable message and its peer before the deadline."""
+    """deadline 전에 해석 가능한 다음 메시지와 실제 peer를 반환한다.
+
+    Return the next decodable message and its actual peer before the deadline.
+    Invalid UTF-8 or JSON packets are ignored while time remains.
+    남은 시간이 있는 동안 잘못된 UTF-8 또는 JSON 패킷은 무시한다.
+    """
 
     while True:
         remaining = deadline - time.monotonic()
@@ -87,7 +103,10 @@ def _accept_advertisement(
     udp_socket: socket.socket,
     deadline: float,
 ) -> tuple[dict[str, object], tuple[str, int]] | None:
-    """Receive a valid ADVERTISE, acknowledge it, and bind its Sender peer."""
+    """유효한 ADVERTISE에 ACK하고 해당 Sender peer를 선택한다.
+
+    Acknowledge a valid ADVERTISE and select its Sender peer.
+    """
 
     while True:
         received = _receive_message(udp_socket, deadline)
@@ -109,7 +128,15 @@ def _accept_detail(
     device_id: str,
     advertisement_id: str,
 ) -> dict[str, object] | None:
-    """Receive and acknowledge a new DETAIL from the selected Sender peer."""
+    """선택된 Sender의 새 DETAIL만 수신하여 ACK한다.
+
+    Receive and acknowledge only a new DETAIL from the selected Sender.
+
+    같은 ADVERTISE 재수신에는 ACK를 다시 보내 유실을 복구하지만, 다른
+    peer·device·message ID는 현재 교환에 섞이지 않도록 무시한다.
+    A repeated selected ADVERTISE is re-acknowledged to recover a lost ACK;
+    other peers, devices, and reused IDs are ignored.
+    """
 
     while True:
         received = _receive_message(udp_socket, deadline)
@@ -148,7 +175,12 @@ def _send_ack(
     ack_for: str,
     peer: tuple[str, int],
 ) -> bool:
-    """Copy a received message ID into an ACK and send it to its actual peer."""
+    """수신 메시지의 ID를 복사한 ACK를 실제 peer로 전송한다.
+
+    Copy the received message ID into an ACK and send it to the actual peer.
+    Return ``False`` if the datagram cannot be sent.
+    데이터그램을 보낼 수 없으면 ``False``를 반환한다.
+    """
 
     payload = encode_message(
         make_ack(
@@ -168,7 +200,11 @@ def _probe_and_build_result(
     detail: dict[str, object],
     deadline: float,
 ) -> dict[str, object]:
-    """Probe the DETAIL endpoint with the remaining budget and build the result."""
+    """남은 timeout으로 DETAIL endpoint를 확인하고 결과 dict를 만든다.
+
+    Probe the DETAIL endpoint with the remaining timeout and build the result
+    dictionary.
+    """
 
     device_id = str(detail["device_id"])
     ip = str(detail["ip"])
@@ -183,7 +219,8 @@ def _probe_and_build_result(
             timeout=remaining,
         )
     except Exception:
-        # FR-RTSP-007: probe failure must not escape Receiver.discover().
+        # FR-RTSP-007: probe 실패는 discover() 밖으로 전파하지 않는다.
+        # A probe failure must not escape Receiver.discover().
         connected = False
     return {
         "device_id": device_id,
@@ -198,6 +235,11 @@ def _probe_and_build_result(
 def _try_parse_advertisement(
     message: dict[str, Any],
 ) -> dict[str, object] | None:
+    """ADVERTISE가 유효하면 정규화된 값, 아니면 ``None``을 반환한다.
+
+    Return normalized ADVERTISE data, or ``None`` when validation fails.
+    """
+
     try:
         return parse_advertisement(message)
     except MessageError:
@@ -205,6 +247,11 @@ def _try_parse_advertisement(
 
 
 def _try_parse_detail(message: dict[str, Any]) -> dict[str, object] | None:
+    """DETAIL이 유효하면 정규화된 값, 아니면 ``None``을 반환한다.
+
+    Return normalized DETAIL data, or ``None`` when validation fails.
+    """
+
     try:
         return parse_detail(message)
     except MessageError:

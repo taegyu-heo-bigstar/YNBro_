@@ -88,8 +88,8 @@ class ReceiverTests(unittest.TestCase):
                         target,
                     )
 
-                # peer는 같지만 device ID가 다르면 앞 단계에서 선택한
-                # Sender의 DETAIL이 아니므로 무시해야 한다.
+                # peer가 같아도 device ID가 다르면 선택된 Sender의 DETAIL이
+                # 아니다. The same peer with another device ID must be ignored.
                 sender_socket.sendto(
                     json.dumps(
                         {
@@ -103,7 +103,8 @@ class ReceiverTests(unittest.TestCase):
                     ).encode(),
                     target,
                 )
-                # DETAIL must use a new ID rather than reusing ADVERTISE ID.
+                # DETAIL은 ADVERTISE ID를 재사용할 수 없다.
+                # DETAIL must use a new ID rather than reuse ADVERTISE ID.
                 sender_socket.sendto(
                     json.dumps(
                         {
@@ -117,10 +118,9 @@ class ReceiverTests(unittest.TestCase):
                     ).encode(),
                     target,
                 )
-                # FR-RCV-004: validate every DETAIL field independently.  Each
-                # packet below has exactly one bad field, so removing any one
-                # validator makes this exchange fail instead of being hidden by
-                # another invalid field.
+                # FR-RCV-004: 아래 패킷은 각각 한 필드만 잘못되어 각 validator를
+                # 독립적으로 검사한다. Each packet has exactly one invalid field,
+                # so every DETAIL validator is tested independently.
                 invalid_details = (
                     {
                         "message_type": "DETAIL",
@@ -201,7 +201,10 @@ class ReceiverTests(unittest.TestCase):
         self.assertLess(time.monotonic() - started, 0.5)
 
     def test_first_device_remains_selected_until_timeout(self) -> None:
-        """A later device cannot replace the first acknowledged advertiser."""
+        """뒤늦게 온 장비가 최초 선택 장비를 대체하지 못하는지 검사한다.
+
+        Verify that a later device cannot replace the first acknowledged Sender.
+        """
 
         discovery_port = free_udp_port()
         results: queue.Queue[dict[str, object] | None] = queue.Queue()
@@ -236,8 +239,8 @@ class ReceiverTests(unittest.TestCase):
                 target,
             )
             first.recvfrom(65_535)
-            # A lost first ACK is recovered by re-ACKing the exact same
-            # advertisement without changing the selected device.
+            # 같은 광고에는 ACK를 다시 보내 유실을 복구하되 선택은 유지한다.
+            # Re-ACK the identical advertisement without changing selection.
             first.sendto(
                 json.dumps(
                     {
@@ -269,7 +272,10 @@ class ReceiverTests(unittest.TestCase):
         self.assertIsNone(results.get_nowait())
 
     def test_platform_timeout_overflow_returns_none(self) -> None:
-        """UDP socket이 큰 timeout을 거부해도 None으로 끝나야 한다."""
+        """표현 불가능한 socket timeout이 ``None``으로 격리되는지 검사한다.
+
+        Verify that an unsupported socket timeout is contained as ``None``.
+        """
 
         udp_socket = mock.MagicMock()
         udp_socket.settimeout.side_effect = OverflowError("timeout is too large")

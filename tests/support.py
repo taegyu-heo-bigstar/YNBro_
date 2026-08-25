@@ -6,7 +6,10 @@ import time
 
 
 def free_udp_port() -> int:
-    """loopback에서 현재 사용하지 않는 UDP port 번호를 구한다."""
+    """loopback에서 사용 가능한 UDP port를 구한다.
+
+    Obtain a currently available UDP port on the loopback interface.
+    """
 
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp_socket:
         udp_socket.bind(("127.0.0.1", 0))
@@ -14,7 +17,10 @@ def free_udp_port() -> int:
 
 
 def free_tcp_port() -> int:
-    """loopback에서 현재 사용하지 않는 TCP port 번호를 구한다."""
+    """loopback에서 사용 가능한 TCP port를 구한다.
+
+    Obtain a currently available TCP port on the loopback interface.
+    """
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as tcp_socket:
         tcp_socket.bind(("127.0.0.1", 0))
@@ -22,7 +28,10 @@ def free_tcp_port() -> int:
 
 
 class FakeRtspServer:
-    """OPTIONS 요청 하나를 받고 지정한 RTSP 응답을 보내는 테스트 서버."""
+    """OPTIONS 하나에 지정된 응답을 보내는 작은 RTSP 테스트 서버다.
+
+    A small RTSP test server that sends a configured response to one OPTIONS.
+    """
 
     def __init__(
         self,
@@ -66,8 +75,8 @@ class FakeRtspServer:
                         break
                     request.extend(chunk)
                 self.request = bytes(request)
-                # response_delay는 TCP 연결에는 성공했지만 RTSP 응답이 늦는
-                # 서버를 재현하여 client의 timeout 처리를 검사할 때 사용한다.
+                # TCP 연결 후 RTSP 응답만 늦는 상황으로 client timeout을 검사한다.
+                # Delay only the RTSP response to exercise the client timeout.
                 if self.response_delay:
                     time.sleep(self.response_delay)
                 response = (

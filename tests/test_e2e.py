@@ -28,7 +28,10 @@ class EndToEndTests(unittest.TestCase):
     def _run_exchange(
         self, status_line: str
     ) -> tuple[bool, dict[str, object] | None, int]:
-        """공개 API 두 개와 가짜 RTSP 서버로 전체 교환을 실행한다."""
+        """공개 API와 가짜 RTSP 서버로 전체 교환을 실행한다.
+
+        Run a complete exchange through public APIs and a fake RTSP server.
+        """
 
         discovery_port = free_udp_port()
         results: queue.Queue[dict[str, object] | None] = queue.Queue()
@@ -44,8 +47,9 @@ class EndToEndTests(unittest.TestCase):
             )
             receiver_thread.start()
             time.sleep(0.05)
-            # Preserve a deterministic single-host E2E test without exposing
-            # a public unicast escape hatch from the SRS broadcast contract.
+            # 공개 unicast 우회 없이 단일 host E2E를 재현하기 위해 private
+            # broadcast 주소만 바꾼다. Patch only the private address for a
+            # deterministic single-host E2E while preserving the public contract.
             with mock.patch("ynb.sender._BROADCAST_ADDRESS", "127.0.0.1"):
                 acknowledged = sender.advertise(
                     DEVICE_ID,
@@ -78,7 +82,10 @@ class EndToEndTests(unittest.TestCase):
         )
 
     def test_rtsp_failure_returns_complete_result_with_false(self) -> None:
-        """UDP 교환 성공과 RTSP probe 성공은 서로 다른 결과임을 검증한다."""
+        """UDP 교환 성공과 RTSP probe 성공이 독립적인지 검사한다.
+
+        Verify that UDP exchange success and RTSP probe success are independent.
+        """
 
         acknowledged, result, rtsp_port = self._run_exchange(
             "RTSP/2.0 404 Not Found"
@@ -98,7 +105,10 @@ class EndToEndTests(unittest.TestCase):
         )
 
     def test_rtsp_probe_exception_is_contained_in_receiver_result(self) -> None:
-        """FR-RTSP-007: a probe failure cannot escape discover()."""
+        """FR-RTSP-007: probe 실패가 discover() 밖으로 전파되지 않는지 검사한다.
+
+        FR-RTSP-007: Verify that a probe failure cannot escape discover().
+        """
 
         with mock.patch(
             "ynb.receiver.connecter.probe_rtsp",
